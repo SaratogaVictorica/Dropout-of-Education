@@ -1,0 +1,150 @@
+<1>Pre-Processing
+
+In this section, we are going to do the pre-processing of data
+
+Firstly, we use NA.omit to remove the data with N/A elements.
+
+Fortunately, it seems that there is no N/A data exist, it means we need not to reduce the size of data set. At the same time, it also means that our result would be close to the actual result - because there is no information be rejected in this case.
+
+Secondly, we transform our outcome from Character to Numeric.
+
+Here we want to discuss about the relationship between the employment status (which we record as Target in data set) and the other factors. We want to see that what factors influence the employment status, and how statistical significant they are.
+
+We using factor() and as.integer() to transform the Target column into integer. Here we record "Dropout" as number 1, "Enrolled" as number 2, and "Graduate" as number 3.
+
+Thirdly, we normalize the data frame.
+
+Since we need to compare the performances of different models, it is necessary to normalize the data frame, so that there would be no potential error between different models, and we could get the most accuracy result.
+
+{r}
+library(readr)
+Data <- read.csv("D:/Program Files/Documents/R/ML/Final Project/dataset.csv")
+Data.Omit = na.omit(Data)
+#View(Data.Omit)
+
+#Dropout as 1, Enrolled as 2, Graduate as 3
+Data.Omit$Target = factor(Data.Omit$Target)
+Data.Omit$Target = as.integer(Data.Omit$Target)
+#View(Data.Omit)
+
+Data.N = scale(Data.Omit)
+Data.N = as.data.frame(Data.N)
+#View(Data)
+
+<2>Using Cross Validation to find the most suitable model
+
+The second section is Cross Validation. We get used to choose model from "Simple Linear", "Ridge Regression", "LASSO Regression" and "Elastic Net". In most cases, Elastic Net is the best model, because it is the combination of Ridge and LASSO, which means it has the advantages of Ridge and LASSO, and avoids their disadvantages.
+
+However, we still need to do Cross Validation here, since our audiences may have no ideas why directly choose Elastic Net but not other methods. Here we modelling the overall function: outcome Target vs. all other variables. The variables' number would be reduce after choosing model, in the process of developing model.
+
+Firstly, we set the train control method. It is a K-fold cross validation method, and in default, K=5 or 10. Here we would not to explain why K=5 or 10 in default, and just set the number of fold K=10.
+
+{r}
+library(caret)
+ctrl <- trainControl(method = "cv", number = 10)
+
+Secondly, doing the cross validation of Simple Linear model.
+
+Since the cross validation is a random process, and it would give us different results each time, we need to seed the random seed, so that the results would be same, and we are able to compare the models, then get the same answers.
+
+The standards we use to compare are RMSE, R-squared, and MAE. RMSE and MAE should be minimized, and R-squared is larger when the model performs better.
+
+{r}
+set.seed(2023)
+Simple.Linear.Model <- train(Target~ .,  data = Data.N,  method = "lm",
+  trControl = ctrl)
+print(Simple.Linear.Model)
+
+Thirdly, doing the cross validation of LASSO regression.
+
+{r}
+set.seed(2023)
+LASSO <- train(Target~ .,  data = Data.N,  method = "lasso",
+  trControl = ctrl)
+print(LASSO)
+
+Fourthly, doing the cross validation of Ridge regression.
+
+{r}
+set.seed(2023)
+RIDGE <- train(Target~ .,  data = Data.N,  method = "ridge",
+  trControl = ctrl)
+print(RIDGE)
+
+Filthily, doing the cross validation of Elastic Net regression.
+
+{r}
+set.seed(2023)
+NET <- train(Target~ .,  data = Data.N,  method = "glmnet",
+  trControl = ctrl)
+print(NET)
+
+Now we are able to compare the results of different models. RMSE would be used to choose the best model, because RMSE (Root Mean Squared Error) measures the average distance between the predicted and actual values of the target variable. It is calculated as the square root of the mean squared error (MSE) and is useful in measuring the magnitude of prediction errors.
+
+Here we could see that the minimum RMSE among these 4 models is 0.6296536 - which is the result of Elastic Net Regression with alpha = 1 & lambda = 0.001248174 (Can be found in the upper R-result).
+
+This is same as our common senses, Elastic Net Regression gives us the most accuracy result. Hence we are going to use Elastic Net Regression as our model to test the relationship between outcome Target and other variables.
+
+{r}
+min(
+Simple.Linear.Model$results$RMSE,
+LASSO$results$RMSE,
+RIDGE$results$RMSE,
+NET$results$RMSE)
+
+<3>Develop the result of model via step-wise.
+
+In this section, we would like to develop our model via step-wise.
+
+The first step is construct a Elastic Net Regression model via glmnet(). Since we already got the Elastic Net Model from the above section, here we directly use the alpha (1) and lambda (0.001248174) from it.
+
+{r}
+library(glmnet)
+
+plot(NET)
+
+#Recording the best Tune via code, rather than directly typing.
+#Reducing errors.
+Optimal.Alpha = NET$bestTune[,1]
+Optimal.Lambda = NET$bestTune[,2]
+
+X = as.matrix(Data.N[,-which(names(Data.N) == "Target")])
+Y = as.numeric(Data.N$Target)
+
+Elastic.Net.Model <- glmnet(x=X, y=Y, 
+                            alpha = Optimal.Alpha, 
+                            lambda = Optimal.Lambda, 
+                            standardize = TRUE)
+
+{r}
+Model.Coef = as.data.frame(coef(Elastic.Net.Model,
+                                s=Optimal.Lambda, exact=TRUE)[-1,])
+colnames(Model.Coef) = "Coefficient"
+Model.Coef
+
+
+
+GLM.Object = glm(Target ~., data=Data.N, x=TRUE, y=TRUE)
+Stepwise.Model <- step(GLM.Object, direction = "both", trace = 0)
+
+
+
+GLM.Coef = as.data.frame(Stepwise.Model$coefficients)
+colnames(GLM.Coef) = "Coefficient"
+GLM.Coef
+
+To be honest, we are not satisfy with the coefficient with Data.N, since there are Binary and Factor variables - after normalization, their values change, then cause the coefficients look like hard to analyze. So we try to use the data before normalization (Data.Omit).
+
+Here is the result of Data.Omit, which seems better and more clear.
+
+{r}
+GLM.Object = glm(Target ~., data=Data.Omit, x=TRUE, y=TRUE)
+Stepwise.Model <- step(GLM.Object, direction = "both", trace = 0)
+
+GLM.Coef = as.data.frame(Stepwise.Model$coefficients)
+colnames(GLM.Coef) = "Coefficient"
+GLM.Coef
+
+<4>Analysis the result of Data.Omit with Elastic Net Regression
+
+As we know, the outcome Target has been separated into 3 status: Dropout, Enrolled, and Graduated. The object of this research is finding the variables that cause people Dropout.
