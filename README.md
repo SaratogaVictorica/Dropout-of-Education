@@ -1,4 +1,4 @@
-# Final-Project
+# Dropout-of-Education
 About Education and Status
 
 In this project, we are going to discuss about dropout of education and its causes.
